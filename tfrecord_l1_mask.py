@@ -87,8 +87,8 @@ for key in data:
         classes_text = []
         classes = []
         encoded_mask_png = []
-        width = _img.shape[0]
-        height = _img.shape[1]
+        width = _img.shape[1]
+        height = _img.shape[0]
 
         for j in range(len(data[key]["regions"])):
             x_lst = np.asarray(data[key]["regions"][j]["shape_attributes"]["all_points_x"])
