@@ -101,7 +101,7 @@ for key in data:
             ymin = int(np.amin(y_lst)*_scale) + _y
             ymax = int(np.amax(y_lst)*_scale) + _y
             
-            cv2.rectangle(_img, (xmin, ymin), (xmax, ymax), (255,0,0), 2)
+            
             try:
                 _commodity = [i for i in commodity_lst if i in data[key]["regions"][j]["region_attributes"]][0]
             except:
@@ -123,7 +123,8 @@ for key in data:
                 classes.append(index)
                 encoded_png = cv2.imencode('.png', mask)[1].tostring()
                 encoded_mask_png.append(encoded_png)
-            # cv2.putText(_img, text, (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), lineType=cv2.LINE_AA)
+                # cv2.rectangle(_img, (xmin, ymin), (xmax, ymax), (255,0,0), 2)
+                # cv2.putText(_img, text, (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), lineType=cv2.LINE_AA)
         # _path = os.path.join(out_path, os.path.splitext(data[key]["filename"])[0]+"_ann"+os.path.splitext(data[key]["filename"])[1])
         # cv2.imwrite(_path, _img)
 

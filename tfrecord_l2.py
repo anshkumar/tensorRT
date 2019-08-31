@@ -14,7 +14,7 @@ json_path = "/Users/vedanshu/tfrecord/train.json"
 out_path = "/Users/vedanshu/tfrecord/out"
 writer = tf.python_io.TFRecordWriter("train.record")
 debug_output_img = True
-target_size=1200
+target_size=300
 label_map = "/Users/vedanshu/tfrecord/label_map.pbtxt"
 write_label_map = False
 
@@ -24,7 +24,7 @@ write_label_map = False
 #      ['big crack and cuts', 'decayed', 'sprouted', 'major hole', 'shriveled', 'greening', 'small crack and cuts', "badly deformed", "eyes", "confusing", "dried sprout"] ]
 
 category_l1 = ['tomato']
-category_l2 = ['tomato', 'spots holes', 'tip', 'cuts cracks', 'shrivelled', 'glare', 'back tip', 'stalk', 'green area', 'non black spots', "rotten", "water layer", "water mark", "deformed double", "unripe", "normal" ]
+category_l2 = ['tomato', 'spots holes', 'tip', 'cuts cracks', 'shrivelled', 'glare', 'back tip', 'stalk', 'green area']
 
 category_index = {k:v for k,v in zip(range(1,len(category_l2)+1), category_l2)}
 
@@ -96,8 +96,11 @@ class Node:
         self.image_format = None
         self.width = None
         self.height = None
-        self.x = None
-        self.y = None
+        self.x1 = None
+        self.y1 = None
+        self.x2 = None
+        self.y2 = None
+        self.scale2 = None
         self.xmin = []
         self.xmax = []
         self.ymin = []
@@ -115,13 +118,16 @@ for key in data:
                 x_lst = np.asarray(data[key]["regions"][j]["shape_attributes"]["all_points_x"])
                 y_lst = np.asarray(data[key]["regions"][j]["shape_attributes"]["all_points_y"])
                 pts = [[x,y] for x,y in zip(x_lst, y_lst)]
-                _img, _x, _y, _w, _h = imgCrop(img, np.array(pts))
+                _img, _x1, _y1, _w1, _h1 = imgCrop(img, np.array(pts))
+                
                 if type(_img) == type(None):
                     print('...Could not read image...')
                     continue
                 if _img.size < 10000:    # a little higher than 50*50*3
                     print("...ONE IMAGE SKIPPED...")
                     continue
+
+                _img, _x2, _y2, _scale2 = getSquareImage(_img, target_size)
                 try:
                     encoded_jpg = cv2.imencode('.jpg', _img)[1].tostring()
                 except:
@@ -132,10 +138,13 @@ for key in data:
                 node.encoded_jpg = encoded_jpg
                 node.filename = tf.compat.as_bytes(data[key]["filename"])
                 node.image_format = b'jpg'
-                node.width = _w
-                node.height = _h
-                node.x = _x
-                node.y = _y
+                node.width = _img.shape[1]
+                node.height = _img.shape[0]
+                node.x1 = _x1
+                node.y1 = _y1
+                node.x2 = _x2
+                node.y2 = _y2
+                node.scale2 = _scale2
                 hierarchy_dict[_id] = node
     else:
         ignore_filename.append(data[key]["filename"])
@@ -149,10 +158,18 @@ for key in data:
                 y_lst = np.asarray(data[key]["regions"][j]["shape_attributes"]["all_points_y"])
                 node = hierarchy_dict[_id]
 
-                xmin = np.amin(x_lst) - node.x
-                xmax = np.amax(x_lst) - node.x
-                ymin = np.amin(y_lst) - node.y
-                ymax = np.amax(y_lst) - node.y
+                # Adjusting for image cropping
+                xmin = np.amin(x_lst) - node.x1
+                xmax = np.amax(x_lst) - node.x1
+                ymin = np.amin(y_lst) - node.y1
+                ymax = np.amax(y_lst) - node.y1
+
+                # Adjusting for image resizing
+                xmin = xmin*node.scale2 + node.x2
+                xmax = xmax*node.scale2 + node.x2
+                ymin = ymin*node.scale2 + node.y2
+                ymax = ymax*node.scale2 + node.y2
+
                 if xmin / node.width < 0 or xmax / node.width < 0 or ymin / node.height < 0 or ymax / node.height < 0:
                     print("...ONE CONTOUR SKIPPED...")
                     continue

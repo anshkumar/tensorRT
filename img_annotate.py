@@ -14,7 +14,7 @@ json_path = "/Users/vedanshu/tfrecord/train.json"
 out_path = "/Users/vedanshu/tfrecord/out"
 commodity_lst = ["tomato"]
 writer = tf.python_io.TFRecordWriter("train.record")
-target_size=1200
+target_size=1024
 label_map = "/Users/vedanshu/tfrecord/label_map.pbtxt"
 write_label_map = False
 
@@ -76,7 +76,7 @@ def getSquareImage( img, target_width = 500 ):
 for key in data:
     _img = cv2.imread(os.path.join("/Users/vedanshu/tfrecord/dataset", data[key]["filename"]))
     if checkJPG(os.path.join("/Users/vedanshu/tfrecord/dataset", data[key]["filename"])):
-        # _img, _x, _y, _scale = getSquareImage(img, target_size)
+        _img, _x, _y, _scale = getSquareImage(_img, target_size)
         encoded_jpg = cv2.imencode('.jpg', _img)[1].tostring()
         filename = tf.compat.as_bytes(data[key]["filename"])
         image_format = b'jpg'
@@ -99,15 +99,15 @@ for key in data:
             if rect_area < 300:
                 print("Area too less ...ONE CONTOUR SKIPPED...")
                 continue
-            # xmin = int(np.amin(x_lst)*_scale) + _x
-            # xmax = int(np.amax(x_lst)*_scale) + _x
-            # ymin = int(np.amin(y_lst)*_scale) + _y
-            # ymax = int(np.amax(y_lst)*_scale) + _y
+            xmin = int(np.amin(x_lst)*_scale) + _x
+            xmax = int(np.amax(x_lst)*_scale) + _x
+            ymin = int(np.amin(y_lst)*_scale) + _y
+            ymax = int(np.amax(y_lst)*_scale) + _y
 
-            xmin = int(np.amin(x_lst))
-            xmax = int(np.amax(x_lst))
-            ymin = int(np.amin(y_lst))
-            ymax = int(np.amax(y_lst))
+            # xmin = int(np.amin(x_lst))
+            # xmax = int(np.amax(x_lst))
+            # ymin = int(np.amin(y_lst))
+            # ymax = int(np.amax(y_lst))
             
             cv2.rectangle(_img, (xmin, ymin), (xmax, ymax), (255,0,0), 2)
             try:
@@ -133,7 +133,7 @@ for key in data:
             classes_text.append(tf.compat.as_bytes(text))
             classes.append(index)
             weights.append(category_weights_index[text])
-        #     cv2.putText(_img, text + str(category_weights_index[text]), (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), lineType=cv2.LINE_AA)
+        #     cv2.putText(_img, text , (xmin, ymin), cv2.FONT_HERSHEY_SIMPLEX, 1.0, (255, 255, 255), lineType=cv2.LINE_AA)
         # _path = os.path.join(out_path, os.path.splitext(data[key]["filename"])[0]+"_ann"+os.path.splitext(data[key]["filename"])[1])
         # cv2.imwrite(_path, _img)
 
