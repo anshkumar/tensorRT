@@ -18,13 +18,13 @@ image_shape=(150, 150) # (width, height) Width has to be equal to height
 num_channels=3
 MAX_DETECTION_IN_L2 = 10
 L1_SCORE_THRESH = 0.3
-L2_SCORE_THRESH = 0.3
+L2_SCORE_THRESH = 0.1
 L1_MASK_THRESH = 0.3
-IS_L1_MASK = False
+IS_L1_MASK = True
 IS_L2_MASK = False
 output_saved_model_dir = "saved_model"
-pb_fname1 = "/Users/vedanshu/frozen_graph/ved_potato_l1_sort_ssdlite_mobilenet_edgetpu.pb"
-pb_fname2 = "/Users/vedanshu/frozen_graph/ved_potato_l2_5x5_sort_faster_rcnn_inception_v2.pb"
+pb_fname1 = "/Users/vedanshu/frozen_graph/ved_potato_l1_sort_mask_rcnn_inception_v2.pb"
+pb_fname2 = "/Users/vedanshu/frozen_graph/ved_potato_l2_5x5_sort_ssd_mobilenet_v1_fpn_3_class_oversample_H.pb"
 
 use_trt =False
 
@@ -276,12 +276,12 @@ with connected_graph.as_default():
         def condition2(j, arr_boxes_l2, arr_original_index, arr_grid_original_index):
             return tf.less(j, tf.shape(boxes_index)[0])
         def body2(j, arr_boxes_l2, arr_original_index, arr_grid_original_index):
-            def update_boxes(arr_boxes_l2, arr_original_index, arr_grid_original_index):
-                y = boxes_index[j][0]
-                x = boxes_index[j][1]
-                original_index = i*grid_shape[0]*grid_shape[1] + y*tf.constant(grid_shape[0]) + x # indexed zero
-                grid_original_index = y*tf.constant(grid_shape[0]) + x
-                
+            y = boxes_index[j][0]
+            x = boxes_index[j][1]
+            original_index = i*grid_shape[0]*grid_shape[1] + y*tf.constant(grid_shape[0]) + x # indexed zero
+            grid_original_index = y*tf.constant(grid_shape[0]) + x
+            
+            def update_boxes(arr_boxes_l2, arr_original_index, arr_grid_original_index):                
                 arr_original_index = arr_original_index.write(j, original_index)
                 arr_grid_original_index = arr_grid_original_index.write(j, grid_original_index)
                 
@@ -302,19 +302,19 @@ with connected_graph.as_default():
                 return [arr_boxes_l2, arr_original_index, arr_grid_original_index]
 
             def update_with_null(arr_boxes_l2, arr_original_index, arr_grid_original_index):
-                y = boxes_index[j][0]
-                x = boxes_index[j][1]
-                original_index = i*grid_shape[0]*grid_shape[1] + y*tf.constant(grid_shape[0]) + x
-                grid_original_index = y*tf.constant(grid_shape[0]) + x
                 arr_original_index = arr_original_index.write(j, original_index)
                 arr_grid_original_index = arr_grid_original_index.write(j, grid_original_index)
                 arr_boxes_l2 = arr_boxes_l2.write(j,[0,0,0,0])
                 return [arr_boxes_l2, arr_original_index, arr_grid_original_index]
 
             arr_boxes_l2, arr_original_index, arr_grid_original_index = tf.cond(
-                tf.math.logical_and(tf.greater_equal(scores_l2[j], L2_SCORE_THRESH),
-                                    tf.math.logical_and(tf.math.equal(boxes_index[j][0],boxes_index[j][2]),
-                                                        tf.math.equal(boxes_index[j][1],boxes_index[j][3]))),
+                tf.math.logical_and(tf.math.less(original_index, tf.shape(boxes_l1)[0]),
+                                    tf.math.logical_and(tf.greater_equal(scores_l2[j], L2_SCORE_THRESH),
+                                                        tf.math.logical_and(tf.math.equal(boxes_index[j][0],boxes_index[j][2]),
+                                                                            tf.math.equal(boxes_index[j][1],boxes_index[j][3])
+                                                                           )
+                                                       )
+                                   ),
                 lambda: update_boxes(arr_boxes_l2, arr_original_index, arr_grid_original_index), 
                 lambda: update_with_null(arr_boxes_l2, arr_original_index, arr_grid_original_index),
                 name='if_cond_update')
@@ -425,8 +425,7 @@ with connected_graph.as_default():
     tf_classes_l2 = tf_classes_l2[:tf.shape(tf_boxes_l1)[0]]
     tf_classes_l2 = tf.identity(tf_classes_l2, name="detection_classes_l2")
     
-    tf_max_num_detection = tf.identity(tf.shape(tf_boxes_l1)[0], name="max_num_detections")
-                    
+    tf_max_num_detection = tf.identity(tf.shape(tf_boxes_l1)[0], name="max_num_detections")                     
                                     
 with connected_graph.as_default():
     print('\nSaving...')
