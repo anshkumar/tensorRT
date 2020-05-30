@@ -18,7 +18,7 @@ num_channels=3
 MAX_DETECTION_IN_L2 = 10
 L1_SCORE_THRESH = 0.3
 L2_SCORE_THRESH = 0.1
-L1_MASK_THRESH = 0.3
+L1_MASK_THRESH = 0.5
 IS_L1_MASK = True
 IS_L2_MASK = False
 output_saved_model_dir = "saved_model"
@@ -113,7 +113,7 @@ def while_condition1_grid(i, k, boxes_pixels, inds_boxes_pixels, tf_input1,
     boxes1, num_detections1):
     return tf.less(i, num_detections1)
 
-def while_condition2_grid(j, boxes_pixels, roies, tf_input1, masks1):
+def while_condition2_grid(j, boxes_pixels, roies, tf_input1, masks1=None):
     return tf.less(j, tf.shape(boxes_pixels)[0])
 
 def while_condition3_grid(k, n_iter, roies, grid_roies):
@@ -130,7 +130,7 @@ def while_body1_grid(i, k, boxes_pixels, inds_boxes_pixels, tf_input1, boxes1,
     return [tf.add(i, 1), k, boxes_pixels, inds_boxes_pixels, tf_input1, boxes1,
     num_detections1]
 
-def while_body2_grid(j, boxes_pixels, roies, tf_input1, masks1):
+def while_body2_grid(j, boxes_pixels, roies, tf_input1, masks1=None):
     startY =  boxes_pixels[j][0]
     startX =  boxes_pixels[j][1]
     endY =  boxes_pixels[j][2]
@@ -140,10 +140,11 @@ def while_body2_grid(j, boxes_pixels, roies, tf_input1, masks1):
     
     if IS_L1_MASK:
         mask = masks1[j]
-        mask = (mask > L1_MASK_THRESH)
         mask = tf.stack([mask, mask, mask],axis=2)
+        mask = tf.image.resize(mask, (boxH, boxW), 
+                               method=tf.image.ResizeMethod.BICUBIC)
+        mask = (mask > L1_MASK_THRESH)
         mask = tf.cast(mask, tf.uint8)
-        mask = tf.image.resize(mask, (boxH, boxW))
         roi = tf.multiply(tf_input1[0, startY:endY, startX:endX], 
             tf.cast(mask, tf.uint8))
     else:
@@ -151,6 +152,8 @@ def while_body2_grid(j, boxes_pixels, roies, tf_input1, masks1):
     roi = tf.image.resize_image_with_pad(roi,image_shape[0],image_shape[1])
     roi = tf.dtypes.cast(roi, tf.uint8)
     roies = roies.write(j, roi)
+    if masks1 is None:
+        return [tf.add(j, 1), boxes_pixels, roies, tf_input1]
     return [tf.add(j, 1), boxes_pixels, roies, tf_input1, masks1]
 
 def while_body3_grid(k, n_iter, roies, grid_roies):
@@ -193,10 +196,16 @@ def get_grid_roies(tf_input1, boxes1, num_detections1, masks1):
         infer_shape=False, 
         name='roies')
 
-    _, _, roies, _, _ = tf.while_loop(
-        while_condition2_grid,
-        while_body2_grid,
-        [j, boxes_pixels, roies, tf_input1, masks1])
+    if masks1 is None:
+        _, _, roies, _ = tf.while_loop(
+            while_condition2_grid,
+            while_body2_grid,
+            [j, boxes_pixels, roies, tf_input1])
+    else:
+        _, _, roies, _, _ = tf.while_loop(
+            while_condition2_grid,
+            while_body2_grid,
+            [j, boxes_pixels, roies, tf_input1, masks1])
 
     # Adding padding for making grid
     roies = roies.stack()
@@ -265,7 +274,8 @@ with intermediate_graph.as_default():
     grid_roies, batch_size, inds_boxes_pixels = tf.cond(
         tf.equal(_detections1, tf.constant(0)), 
         create_empty_grid, 
-        lambda: get_grid_roies(tf_input1, boxes1, num_detections1, masks1))
+        lambda: get_grid_roies(tf_input1, boxes1, num_detections1,
+                                masks1 if IS_L1_MASK else None))
     grid_roies = tf.identity(grid_roies, name="grid_roies_out")
     batch_size = tf.identity(batch_size, name="batch_size")
     
@@ -423,17 +433,23 @@ def while_condition1_batch(i, boxes_l1, boxes_l2, tf_scores_l2,
 
 def while_body2_contour(j, i, boxes_l1, boxes_l2, scores_l2, boxes_index, 
     arr_boxes_l2, arr_original_index, arr_grid_original_index):
-    x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
-    tf.cond(
-        tf.math.logical_and(
-            tf.math.equal(boxes_index[j][0],boxes_index[j][2]),
-            tf.math.equal(boxes_index[j][1],boxes_index[j][3])
-        ),
-    lambda: get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
-        arr_original_index, arr_grid_original_index),
-    lambda: get_box_with_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
-        arr_original_index, arr_grid_original_index),
-    )
+    if grid_shape[0] * grid_shape[1] == 1:
+        x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
+        get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+            arr_original_index, arr_grid_original_index)
+    else:
+        x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
+        tf.cond(
+            tf.math.logical_and(
+                tf.math.equal(boxes_index[j][0],boxes_index[j][2]),
+                tf.math.equal(boxes_index[j][1],boxes_index[j][3])
+            ),
+        lambda: get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+            arr_original_index, arr_grid_original_index),
+        lambda: get_box_with_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+            arr_original_index, arr_grid_original_index),
+            name='box_clipping_condition'
+        )
 
     arr_boxes_l2, arr_original_index, arr_grid_original_index = tf.cond(
         tf.math.logical_and(tf.math.less(original_index, tf.shape(boxes_l1)[0]),
