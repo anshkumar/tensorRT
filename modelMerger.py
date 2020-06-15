@@ -21,6 +21,7 @@ L2_SCORE_THRESH = 0.1
 L1_MASK_THRESH = 0.5
 IS_L1_MASK = True
 IS_L2_MASK = False
+L2_BOX_PRUNING = True
 output_saved_model_dir = "saved_model"
 pb_fname1 = "/Users/vedanshu/frozen_graph/ved_potato_l1_sort_mask_rcnn_inception_v2.pb"
 pb_fname2 = "/Users/vedanshu/frozen_graph/ved_potato_l2_5x5_sort_ssd_mobilenet_v2_fpn_3_class_oversample_BDH.pb"
@@ -433,37 +434,64 @@ def while_condition1_batch(i, boxes_l1, boxes_l2, tf_scores_l2,
 
 def while_body2_contour(j, i, boxes_l1, boxes_l2, scores_l2, boxes_index, 
     arr_boxes_l2, arr_original_index, arr_grid_original_index):
-    if grid_shape[0] * grid_shape[1] == 1:
+    if L2_BOX_PRUNING:
         x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
         get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
-            arr_original_index, arr_grid_original_index)
-    else:
-        x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
-        tf.cond(
+                arr_original_index, arr_grid_original_index)
+        arr_boxes_l2, arr_original_index, arr_grid_original_index = tf.cond(
             tf.math.logical_and(
-                tf.math.equal(boxes_index[j][0],boxes_index[j][2]),
-                tf.math.equal(boxes_index[j][1],boxes_index[j][3])
-            ),
-        lambda: get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
-            arr_original_index, arr_grid_original_index),
-        lambda: get_box_with_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
-            arr_original_index, arr_grid_original_index),
-            name='box_clipping_condition'
-        )
+                tf.math.logical_and(
+                    tf.math.less(original_index,
+                                 tf.shape(boxes_l1)[0]),
+                    tf.greater_equal(scores_l2[j],
+                                     L2_SCORE_THRESH),),
+                tf.math.logical_and(
+                    tf.math.equal(boxes_index[j][0],
+                                  boxes_index[j][2]),
+                    tf.math.equal(boxes_index[j][1],
+                                  boxes_index[j][3])
+                )),
+            lambda: update_boxes(j, i, boxes_l1, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index,
+                x, y, _ymin, _xmin, _ymax, _xmax, original_index, 
+                grid_original_index), 
+            lambda: update_with_null(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index,
+                x, y, _ymin, _xmin, _ymax, _xmax, original_index, 
+                grid_original_index),
+            name='if_cond_update')
+    else:
+        if grid_shape[0] * grid_shape[1] == 1:
+            x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
+            get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index)
+        else:
+            x, y, _ymin, _xmin, _ymax, _xmax, original_index, grid_original_index = \
+            tf.cond(
+                tf.math.logical_and(
+                    tf.math.equal(boxes_index[j][0],boxes_index[j][2]),
+                    tf.math.equal(boxes_index[j][1],boxes_index[j][3])
+                ),
+            lambda: get_box_without_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index),
+            lambda: get_box_with_clipping(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index),
+                name='box_clipping_condition'
+            )
 
-    arr_boxes_l2, arr_original_index, arr_grid_original_index = tf.cond(
-        tf.math.logical_and(tf.math.less(original_index, tf.shape(boxes_l1)[0]),
-                            tf.greater_equal(scores_l2[j], L2_SCORE_THRESH),
-                           ),
-        lambda: update_boxes(j, i, boxes_l1, boxes_l2, boxes_index, 
-            arr_boxes_l2, arr_original_index, arr_grid_original_index,
-            x, y, _ymin, _xmin, _ymax, _xmax, original_index, 
-            grid_original_index), 
-        lambda: update_with_null(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
-            arr_original_index, arr_grid_original_index,
-            x, y, _ymin, _xmin, _ymax, _xmax, original_index, 
-            grid_original_index),
-        name='if_cond_update')
+        arr_boxes_l2, arr_original_index, arr_grid_original_index = tf.cond(
+            tf.math.logical_and(tf.math.less(original_index, tf.shape(boxes_l1)[0]),
+                                tf.greater_equal(scores_l2[j], L2_SCORE_THRESH),
+                               ),
+            lambda: update_boxes(j, i, boxes_l1, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index,
+                x, y, _ymin, _xmin, _ymax, _xmax, original_index, 
+                grid_original_index), 
+            lambda: update_with_null(j, i, boxes_l2, boxes_index, arr_boxes_l2, 
+                arr_original_index, arr_grid_original_index,
+                x, y, _ymin, _xmin, _ymax, _xmax, original_index, 
+                grid_original_index),
+            name='if_cond_update')
     return [tf.add(j, 1), i, boxes_l1, boxes_l2, scores_l2, boxes_index, 
     arr_boxes_l2, arr_original_index, arr_grid_original_index]
 
