@@ -143,14 +143,16 @@ def while_body2_grid(j, boxes_pixels, roies, tf_input1, masks1=None):
         mask = masks1[j]
         mask = tf.stack([mask, mask, mask],axis=2)
         mask = tf.image.resize(mask, (boxH, boxW), 
-                               method=tf.image.ResizeMethod.BICUBIC)
+                               method=tf.image.ResizeMethod.BICUBIC,
+                               align_corners=True)
         mask = (mask > L1_MASK_THRESH)
         mask = tf.cast(mask, tf.uint8)
         roi = tf.multiply(tf_input1[0, startY:endY, startX:endX], 
             tf.cast(mask, tf.uint8))
     else:
         roi = tf_input1[0, startY:endY, startX:endX] # batch: 0
-    roi = tf.image.resize_image_with_pad(roi,image_shape[0],image_shape[1])
+    roi = tf.image.resize_image_with_pad(roi,image_shape[0],image_shape[1],
+        align_corners=True)
     roi = tf.dtypes.cast(roi, tf.uint8)
     roies = roies.write(j, roi)
     if masks1 is None:
